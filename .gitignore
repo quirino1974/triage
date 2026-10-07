@@ -1,0 +1,6 @@
+# segreti locali
+.env
+password
+
+# dati dei container: database, modelli, credenziali n8n
+data/

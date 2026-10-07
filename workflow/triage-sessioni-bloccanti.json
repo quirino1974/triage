@@ -1,0 +1,522 @@
+{
+  "name": "Lab Triage - sessioni bloccanti",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes"
+            }
+          ]
+        }
+      },
+      "id": "c7290db9-b997-4a10-b363-7231eaa4a23a",
+      "name": "Ogni 5 minuti",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -1984,
+        112
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "5e0cdb3b-dc90-4551-9627-d433389387c1",
+              "name": "chatId",
+              "value": "INSERISCI_CHAT_ID_TELEGRAM",
+              "type": "string"
+            },
+            {
+              "id": "296ea575-fac1-42b6-b1d6-863d84ff1ff1",
+              "name": "approvatore",
+              "value": "DbAdmin",
+              "type": "string"
+            },
+            {
+              "id": "6fd09465-4c77-4569-9a81-047f3cdd065b",
+              "name": "modello",
+              "value": "llama3.2:3b",
+              "type": "string"
+            },
+            {
+              "id": "7c51ee56-5553-4e56-ba96-03952455d3ca",
+              "name": "ollamaUrl",
+              "value": "http://ollama:11434",
+              "type": "string"
+            },
+            {
+              "id": "c8beda7e-36c0-4f43-af27-cd174b3f73b8",
+              "name": "modelloEmbedding",
+              "value": "nomic-embed-text",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "2c6b1e07-9780-4ea8-a260-c7976023c145",
+      "name": "Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -1760,
+        112
+      ],
+      "notesInFlow": true,
+      "notes": "Da compilare: chatId Telegram e nome di chi approva"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- Sessioni bloccate e chi le blocca (da query/sessioni_bloccanti.sql),\n-- escluse quelle per cui esiste già una proposta negli ultimi 30 minuti.\nSELECT\n    bloccata.pid                                      AS pid_bloccato,\n    bloccata.usename                                  AS utente_bloccato,\n    host(bloccata.client_addr)                        AS ip_bloccato,\n    left(bloccata.query, 120)                         AS query_bloccata,\n    round(extract(epoch FROM now() - bloccata.query_start))::int AS attesa_sec,\n    bloccante.pid                                     AS pid_bloccante,\n    bloccante.usename                                 AS utente_bloccante,\n    host(bloccante.client_addr)                       AS ip_bloccante,\n    bloccante.application_name                        AS applicazione_bloccante,\n    bloccante.state                                   AS stato_bloccante,\n    left(bloccante.query, 120)                        AS query_bloccante,\n    round(extract(epoch FROM now() - bloccante.xact_start))::int AS durata_tx_bloccante_sec\nFROM pg_stat_activity bloccata\nJOIN LATERAL unnest(pg_blocking_pids(bloccata.pid)) AS b(pid) ON true\nJOIN pg_stat_activity bloccante ON bloccante.pid = b.pid\nWHERE bloccata.datname = current_database()\n  AND NOT EXISTS (\n      SELECT 1 FROM ops.audit_log a\n      WHERE a.action = 'PROPOSED'\n        AND a.target = 'pid=' || bloccante.pid\n        AND a.ts > now() - interval '30 minutes')\nORDER BY attesa_sec DESC;",
+        "options": {}
+      },
+      "id": "896d0044-a17e-4a6b-b682-3698ca693a79",
+      "name": "Sessioni bloccanti",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -1536,
+        112
+      ],
+      "notesInFlow": true,
+      "credentials": {
+        "postgres": {
+          "name": "Lab PG - ai_monitor"
+        }
+      },
+      "notes": "Credenziale: ai_monitor. Nessuna riga = il flusso si ferma qui"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Una proposta per ogni sessione bloccante (non una per ogni sessione bloccata).\nconst gruppi = {};\nfor (const { json: r } of $input.all()) {\n  const g = gruppi[r.pid_bloccante] ??= {\n    pid_bloccante: r.pid_bloccante,\n    utente_bloccante: r.utente_bloccante,\n    ip_bloccante: r.ip_bloccante ?? 'locale (socket)',\n    applicazione_bloccante: r.applicazione_bloccante || null,\n    stato_bloccante: r.stato_bloccante,\n    query_bloccante: r.query_bloccante,\n    durata_tx_bloccante_sec: r.durata_tx_bloccante_sec,\n    attesa_max_sec: 0,\n    bloccate: [],\n  };\n  g.bloccate.push({ pid: r.pid_bloccato, utente: r.utente_bloccato, ip: r.ip_bloccato ?? 'locale (socket)', query: r.query_bloccata, attesa_sec: r.attesa_sec });\n  g.attesa_max_sec = Math.max(g.attesa_max_sec, r.attesa_sec);\n}\n\nreturn Object.values(gruppi).map(g => ({\n  json: {\n    ...g,\n    n_bloccate: g.bloccate.length,\n    domanda: `Lock su PostgreSQL: attesa massima ${g.attesa_max_sec} secondi, sessioni bloccate ${g.bloccate.length}. Quale severità assegnare?`,\n  },\n}));"
+      },
+      "id": "1246a0ec-f26e-4acc-b6a9-8a0ee359b1c5",
+      "name": "Raggruppa per bloccante",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1328,
+        112
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config').first().json.ollamaUrl }}/api/generate",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { model: $('Config').first().json.modello, prompt: $json.prompt, stream: false, format: 'json', options: { temperature: 0 } } }}",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "id": "b36ec05c-1505-451d-99d0-964881192510",
+      "name": "Ollama triage",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -444,
+        112
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// Valida la risposta di Ollama: se non è JSON valido si ripiega su valori prudenti.\nconst { domanda, ...s } = $('Raggruppa per bloccante').item.json;\nconst kb = $('Componi prompt').item.json;\n\nlet p = {};\ntry { p = JSON.parse($json.response); } catch (e) { p = {}; }\n\n// La severità fa fede dal vector DB; se il modello ne riporta una diversa lo si annota nel dettaglio.\nconst severity_modello = ['P1', 'P2', 'P3', 'P4'].includes(p.severity) ? p.severity : null;\nconst severity = kb.severita_kb ?? severity_modello ?? 'P3';\nconst azione = p.azione === 'TERMINA' ? 'TERMINA' : 'ATTENDI';\nconst motivazione = String(p.motivazione || 'risposta del modello non interpretabile').slice(0, 300);\n\n// Telegram interpreta il testo come Markdown: i caratteri _ * ` [ vanno preceduti da \\\n// altrimenti nomi come app_user fanno fallire l'invio (\"can't parse entities\").\nconst esc = v => String(v ?? '').replace(/([_*`\\[])/g, '\\\\$1');\nconst messaggio = [\n  `🚨 Lock su labdb — severità ${severity}`,\n  '',\n  `Bloccante: pid ${s.pid_bloccante} (${esc(s.stato_bloccante)}), transazione aperta da ${s.durata_tx_bloccante_sec} s`,\n  `Utente: ${esc(s.utente_bloccante)}`,\n  `IP di provenienza: ${esc(s.ip_bloccante)}` + (s.applicazione_bloccante ? ` (${esc(s.applicazione_bloccante)})` : ''),\n  `Query: ${esc(s.query_bloccante)}`,\n  '',\n  `Sessioni bloccate: ${s.n_bloccate} (attesa massima ${s.attesa_max_sec} s)`,\n  ...s.bloccate.slice(0, 5).map(b => `• pid ${b.pid}, utente ${esc(b.utente)}, IP ${esc(b.ip)}, in attesa da ${b.attesa_sec} s`),\n  '',\n  `Proposta AI: ${azione}`,\n  esc(motivazione),\n  '',\n  'Approva = termina la sessione bloccante.',\n].join('\\n');\n\nreturn {\n  json: {\n    ...s,\n    messaggio,\n    severity,\n    azione,\n    motivazione,\n    target: `pid=${s.pid_bloccante}`,\n    detail: {\n      modello: $('Config').first().json.modello,\n      azione_proposta: azione,\n      severita_kb: kb.severita_kb,\n      severita_modello: severity_modello,\n      criterio_kb: kb.criterio_kb,\n      motivazione,\n      bloccante: { pid: s.pid_bloccante, utente: s.utente_bloccante, ip: s.ip_bloccante, applicazione: s.applicazione_bloccante, stato: s.stato_bloccante, query: s.query_bloccante, durata_tx_sec: s.durata_tx_bloccante_sec },\n      bloccate: s.bloccate,\n    },\n  },\n};"
+      },
+      "id": "ee8a8a3c-60b1-4308-af69-d916879d7db5",
+      "name": "Interpreta risposta",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -220,
+        112
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT ops.log_event('PROPOSED', $1, $2, $3::jsonb) AS audit_id;",
+        "options": {
+          "queryReplacement": "={{ [ $json.target, $json.severity, JSON.stringify($json.detail) ] }}"
+        }
+      },
+      "id": "938d69c6-3873-4232-bbfc-3484923ce01f",
+      "name": "Registra PROPOSED",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        4,
+        112
+      ],
+      "notesInFlow": true,
+      "credentials": {
+        "postgres": {
+          "name": "Lab PG - ai_monitor"
+        }
+      },
+      "notes": "Credenziale: ai_monitor"
+    },
+    {
+      "parameters": {
+        "operation": "sendAndWait",
+        "chatId": "={{ $('Config').first().json.chatId }}",
+        "message": "={{ $('Interpreta risposta').item.json.messaggio }}\n\nProposta n. {{ $('Registra PROPOSED').item.json.audit_id }} nel registro.",
+        "approvalOptions": {
+          "values": {
+            "approvalType": "double",
+            "approveLabel": "✅ Approva",
+            "disapproveLabel": "❌ Rifiuta"
+          }
+        },
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "id": "877b0ead-aec4-46b2-b81b-75b0ed7cff97",
+      "name": "Telegram: approva o rifiuta",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        212,
+        112
+      ],
+      "notesInFlow": true,
+      "credentials": {
+        "telegramApi": {
+          "name": "Telegram - bot triage"
+        }
+      },
+      "notes": "Credenziale: bot Telegram",
+      "webhookId": "d5fcd0cc-1388-46f5-b25f-d5529c4bfc72"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "c54afb42-df50-42b0-9b82-7d95d621673a",
+              "leftValue": "={{ $json.data.approved }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "774803aa-480e-4d94-bd0c-ccbb3df21bec",
+      "name": "Approvata?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        436,
+        112
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT ops.terminate_session($1::int, $2, $3) AS terminata;",
+        "options": {
+          "queryReplacement": "={{ [ $('Interpreta risposta').item.json.pid_bloccante, $('Config').first().json.approvatore, $('Interpreta risposta').item.json.severity + ' - ' + $('Interpreta risposta').item.json.motivazione ] }}"
+        }
+      },
+      "id": "d33629b8-dedf-4d25-b9f8-c911d5f64f41",
+      "name": "Termina sessione",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        660,
+        0
+      ],
+      "notesInFlow": true,
+      "credentials": {
+        "postgres": {
+          "name": "Lab PG - ai_action"
+        }
+      },
+      "notes": "Credenziale: ai_action. La funzione scrive da sola EXECUTED/FAILED su audit_log"
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Config').first().json.chatId }}",
+        "text": "={{ $json.terminata ? '✅ Sessione pid ' + $('Interpreta risposta').item.json.pid_bloccante + ' terminata.' : '⚠️ Sessione pid ' + $('Interpreta risposta').item.json.pid_bloccante + ' NON terminata (già chiusa o protetta dal guardrail): vedi il registro audit.' }}",
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "id": "b52e6156-ca08-44dd-ad39-815f00a0df8b",
+      "name": "Telegram: esito",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        884,
+        0
+      ],
+      "notesInFlow": true,
+      "credentials": {
+        "telegramApi": {
+          "name": "Telegram - bot triage"
+        }
+      },
+      "notes": "Credenziale: bot Telegram",
+      "webhookId": "8b617b7b-1096-4fa6-a9ac-deaace155081"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT ops.log_event('REJECTED', $1, $2, $3::jsonb, $4, 'rifiutata') AS audit_id;",
+        "options": {
+          "queryReplacement": "={{ [ $('Interpreta risposta').item.json.target, $('Interpreta risposta').item.json.severity, JSON.stringify($('Interpreta risposta').item.json.detail), $('Config').first().json.approvatore ] }}"
+        }
+      },
+      "id": "f16abcb2-e444-4732-9652-0ded03ecfdbb",
+      "name": "Registra REJECTED",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        660,
+        224
+      ],
+      "notesInFlow": true,
+      "credentials": {
+        "postgres": {
+          "name": "Lab PG - ai_monitor"
+        }
+      },
+      "notes": "Credenziale: ai_monitor"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config').first().json.ollamaUrl }}/api/embed",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { model: $('Config').first().json.modelloEmbedding, input: 'search_query: ' + $json.domanda } }}",
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "id": "71bfd042-e04c-423d-b025-3775eedaf289",
+      "name": "Embedding situazione",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -1108,
+        112
+      ],
+      "notes": "Vettore della situazione, per la ricerca nel vector DB",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- Recupero dalla base vettoriale kb.documenti (eseguita dal workflow come ai_monitor).\n-- $1 = embedding della situazione (nomic-embed-text), $2 = attesa massima in secondi, $3 = sessioni bloccate.\n-- criterio: tra le severità le cui soglie sono soddisfatte, la più grave (filtro sui metadati).\n-- contesto: i frammenti senza soglie più vicini alla situazione (ricerca per similarità).\nWITH q AS (SELECT $1::vector AS v, $2::int AS attesa, $3::int AS n),\ncriterio AS (\n    SELECT d.sezione, d.contenuto\n    FROM kb.documenti d, q\n    WHERE d.documento = 'severita' AND d.meta ? 'gravita'\n      AND (q.attesa >= (d.meta->>'attesa_min')::int OR q.n >= (d.meta->>'sessioni_min')::int)\n    ORDER BY (d.meta->>'gravita')::int\n    LIMIT 1),\ncontesto AS (\n    SELECT d.sezione, d.contenuto\n    FROM kb.documenti d, q\n    WHERE NOT d.meta ? 'gravita'\n    ORDER BY d.embedding <=> q.v\n    LIMIT 2)\nSELECT (SELECT sezione   FROM criterio) AS severita_kb,\n       (SELECT contenuto FROM criterio) AS criterio_kb,\n       (SELECT string_agg('[' || sezione || '] ' || contenuto, E'\\n\\n') FROM contesto) AS contesto_kb;\n",
+        "options": {
+          "queryReplacement": "={{ [ JSON.stringify($json.embeddings[0]), $('Raggruppa per bloccante').item.json.attesa_max_sec, $('Raggruppa per bloccante').item.json.n_bloccate ] }}"
+        }
+      },
+      "id": "c6040f79-763b-41d1-aca7-d0eeb31b32d4",
+      "name": "Cerca criterio nel vector DB",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -888,
+        112
+      ],
+      "credentials": {
+        "postgres": {
+          "name": "Lab PG - ai_monitor"
+        }
+      },
+      "notes": "Credenziale: ai_monitor. Legge kb.documenti (pgvector)",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// Compone il prompt con ciò che è stato recuperato dalla base vettoriale.\nconst g = $('Raggruppa per bloccante').item.json;\nconst kb = $json;\n\nconst prompt = `Sei un DBA PostgreSQL che fa triage di lock. Usa SOLO quanto riportato dalla base di conoscenza.\n\nSITUAZIONE\n- sessione bloccante: pid ${g.pid_bloccante}, utente ${g.utente_bloccante}, stato ${g.stato_bloccante}, transazione aperta da ${g.durata_tx_bloccante_sec} secondi\n- query bloccante: ${g.query_bloccante}\n- sessioni bloccate: ${g.n_bloccate}\n- attesa massima: ${g.attesa_max_sec} secondi\n\nBASE DI CONOSCENZA\nCriterio applicabile a questa situazione: severità ${kb.severita_kb}\n${kb.criterio_kb}\n\n${kb.contesto_kb ?? ''}\n\nRispondi SOLO con un oggetto JSON:\n{\"severity\": \"la severità indicata dal criterio applicabile\", \"azione\": \"TERMINA|ATTENDI secondo il criterio\", \"motivazione\": \"una frase in italiano che cita attesa massima e numero di sessioni bloccate\"}`;\n\nreturn { json: { severita_kb: kb.severita_kb, criterio_kb: kb.criterio_kb, prompt } };"
+      },
+      "id": "c54df07f-0698-43e1-a454-26e653162397",
+      "name": "Componi prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -668,
+        112
+      ]
+    }
+  ],
+  "connections": {
+    "Ogni 5 minuti": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config": {
+      "main": [
+        [
+          {
+            "node": "Sessioni bloccanti",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sessioni bloccanti": {
+      "main": [
+        [
+          {
+            "node": "Raggruppa per bloccante",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Raggruppa per bloccante": {
+      "main": [
+        [
+          {
+            "node": "Embedding situazione",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ollama triage": {
+      "main": [
+        [
+          {
+            "node": "Interpreta risposta",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Interpreta risposta": {
+      "main": [
+        [
+          {
+            "node": "Registra PROPOSED",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Registra PROPOSED": {
+      "main": [
+        [
+          {
+            "node": "Telegram: approva o rifiuta",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Telegram: approva o rifiuta": {
+      "main": [
+        [
+          {
+            "node": "Approvata?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Approvata?": {
+      "main": [
+        [
+          {
+            "node": "Termina sessione",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Registra REJECTED",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Termina sessione": {
+      "main": [
+        [
+          {
+            "node": "Telegram: esito",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Embedding situazione": {
+      "main": [
+        [
+          {
+            "node": "Cerca criterio nel vector DB",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Cerca criterio nel vector DB": {
+      "main": [
+        [
+          {
+            "node": "Componi prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Componi prompt": {
+      "main": [
+        [
+          {
+            "node": "Ollama triage",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {}
+}

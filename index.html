@@ -1,0 +1,646 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Lab Triage AI | Quirino Scaramastra</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🚨</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..900&family=Figtree:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --night:#0F1E4A; --night2:#16296A; --deep:#0A1433; --electric:#7D96FF; --amber:#FFB547;
+  --teal:#36C2A8; --pink:#F27DA8;
+  --paper:#F5F6FA; --card:#FFFFFF; --ink:#101830; --muted:#5A6480; --line:#DDE1EC;
+  --onn:#EEF1FB; --onm:#A9B4D8;
+  --display:"Archivo","Arial Black",system-ui,sans-serif;
+  --body:"Figtree","Segoe UI",system-ui,sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,Consolas,monospace;
+}
+*,*::before,*::after{box-sizing:border-box}
+html,body{margin:0;height:100%;background:var(--deep);overflow:hidden;font-family:var(--body);-webkit-font-smoothing:antialiased}
+#viewport{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;overflow:hidden}
+#stage{width:1600px;height:900px;position:relative;flex:none;transform-origin:center center;overflow:hidden;box-shadow:0 30px 90px rgba(0,0,0,.5)}
+button{font-family:var(--body);cursor:pointer}
+:focus-visible{outline:3px solid var(--amber);outline-offset:3px}
+
+/* ---------- slide base ---------- */
+.slide{position:absolute;inset:0;padding:72px 96px 104px;display:none;flex-direction:column;background:var(--paper);color:var(--ink);overflow:hidden}
+.slide.active{display:flex}
+.slide.dark{background:var(--night);color:var(--onn)}
+h2{font-family:var(--display);font-weight:800;font-stretch:110%;font-size:60px;line-height:1.02;letter-spacing:-.02em;margin:0 0 22px;max-width:24ch}
+.lead{font-size:27px;line-height:1.45;color:var(--muted);margin:0 0 20px;max-width:46ch}
+.dark .lead{color:var(--onm)}
+p{font-size:24px;line-height:1.5;margin:0 0 14px}
+.cols{display:grid;grid-template-columns:1fr 1fr;gap:56px;flex:1;align-items:center;min-height:0}
+.cols.wide-r{grid-template-columns:.8fr 1.2fr}
+.cols>*{min-width:0}
+.card{background:var(--card);border:1px solid var(--line);border-radius:20px;padding:28px}
+.analogy{border-left:4px solid var(--amber);padding:6px 0 6px 20px;font-size:23px;line-height:1.5;color:var(--ink);margin-top:10px}
+.analogy b{color:var(--night2)}
+.btn{background:var(--night);color:var(--onn);border:none;border-radius:10px;padding:12px 20px;font-size:19px;font-weight:600;transition:transform .12s}
+.btn:hover{transform:translateY(-2px)}
+.btn.amber{background:var(--amber);color:#1A1406}
+.hint{font-size:18px;color:var(--muted)}
+.mono{font-family:var(--mono)}
+
+/* entrance animation */
+.slide.active [data-a]{animation:rise .75s cubic-bezier(.2,.7,.2,1) both;animation-delay:var(--d,0s)}
+@keyframes rise{from{opacity:0;transform:translateY(26px)}to{opacity:1;transform:none}}
+.caret{display:inline-block;width:.55em;height:1.05em;background:var(--amber);vertical-align:-.16em;animation:blink 1s steps(1) infinite}
+@keyframes blink{50%{opacity:0}}
+
+/* ---------- chrome ---------- */
+#chrome{position:absolute;left:96px;right:96px;bottom:30px;display:flex;align-items:center;justify-content:space-between;font-size:18px;color:var(--muted);z-index:5;pointer-events:none}
+#stage.on-dark #chrome{color:var(--onm)}
+#chrome .navs{display:flex;gap:10px;align-items:center;pointer-events:auto}
+#chrome .navs button{width:40px;height:40px;border-radius:50%;border:1.5px solid currentColor;background:transparent;color:inherit;font-size:18px;opacity:.55}
+#chrome .navs button:hover{opacity:1}
+#bar{position:absolute;left:0;bottom:0;height:5px;background:var(--amber);transition:width .4s ease;z-index:5}
+
+/* ---------- cover ---------- */
+.gridbg{position:absolute;inset:0;background-image:linear-gradient(rgba(125,150,255,.09) 1px,transparent 1px),linear-gradient(90deg,rgba(125,150,255,.09) 1px,transparent 1px);background-size:56px 56px;-webkit-mask-image:radial-gradient(ellipse at 78% 35%,#000 5%,transparent 70%);mask-image:radial-gradient(ellipse at 78% 35%,#000 5%,transparent 70%);pointer-events:none}
+.cover h1{position:relative;font-family:var(--display);font-weight:900;font-stretch:125%;font-size:150px;line-height:.86;letter-spacing:-.02em;margin:60px 0 34px}
+.cover h1 span{display:block}
+.outline{color:transparent;-webkit-text-stroke:2.5px var(--onn)}
+.cover .sub{position:relative;font-size:28px;color:var(--onm);max-width:44ch;line-height:1.45}
+.cover .author{position:relative;margin-top:auto;display:flex;gap:28px;align-items:baseline}
+.cover .author b{font-family:var(--display);font-stretch:112%;font-size:30px}
+.cover .author span{color:var(--onm);font-size:22px}
+.cover .cterm{position:absolute;right:96px;bottom:110px;font-family:var(--mono);font-size:22px;color:var(--onm);background:rgba(10,20,51,.7);border:1px solid rgba(125,150,255,.25);border-radius:12px;padding:16px 22px}
+.cover .cterm b{color:var(--electric);font-weight:400}
+.keys{position:absolute;right:96px;top:72px;font-size:18px;color:var(--onm)}
+.keys kbd{font-family:var(--mono);border:1px solid rgba(255,255,255,.25);border-radius:6px;padding:2px 8px;margin:0 2px}
+
+/* ---------- agenda ---------- */
+.agenda{display:grid;grid-template-columns:repeat(4,1fr);gap:28px;margin-top:40px}
+.ag{position:relative;background:var(--card);border:1px solid var(--line);border-radius:20px;padding:30px 28px 34px;min-height:300px}
+.ag:not(:last-child)::after{content:"";position:absolute;right:-24px;top:58px;width:20px;height:12px;background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='12'%3E%3Cpath d='M0 6H17M12 1l6 5-6 5' stroke='%237D96FF' stroke-width='2' fill='none'/%3E%3C/svg%3E") no-repeat}
+.ag .n{font-family:var(--display);font-weight:900;font-stretch:125%;font-size:64px;line-height:1;color:var(--electric)}
+.ag h3{font-family:var(--display);font-weight:800;font-stretch:108%;font-size:30px;margin:18px 0 10px;line-height:1.1}
+.ag p{font-size:21px;color:var(--muted);margin:0}
+.ag.hi{background:var(--night);border-color:var(--night);color:var(--onn)}
+.ag.hi p{color:var(--onm)}
+.ag.hi .n{color:var(--amber)}
+
+/* ---------- divider ---------- */
+.divider{justify-content:center}
+.divider .big{font-family:var(--display);font-weight:900;font-stretch:125%;font-size:300px;line-height:.8;color:transparent;-webkit-text-stroke:3px var(--electric);margin-bottom:30px}
+.divider h2{font-size:96px;max-width:16ch;margin-bottom:22px}
+.divider .lead{font-size:30px}
+
+/* ---------- concept cards ---------- */
+.concepts{display:flex;flex-direction:column;gap:16px}
+.concept{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:20px 24px}
+.concept h3{font-family:var(--display);font-weight:800;font-stretch:108%;font-size:26px;margin:0 0 6px}
+.concept p{font-size:21px;color:var(--muted);margin:0;line-height:1.45}
+.concept p b{color:var(--ink)}
+.trio{display:grid;grid-template-columns:repeat(3,1fr);gap:24px;margin-top:8px}
+.trio .concept{padding:26px 28px}
+.trio .ic{font-size:40px;display:block;margin-bottom:10px}
+
+/* ---------- services ---------- */
+.svc{display:flex;flex-direction:column;gap:14px;margin-top:10px}
+.svc div{display:grid;grid-template-columns:56px 1fr;gap:14px;align-items:center;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px 18px}
+.svc .ic{font-size:34px;text-align:center}
+.svc b{font-family:var(--display);font-stretch:108%;font-size:22px;display:block}
+.svc span{font-size:19px;color:var(--muted)}
+
+/* ---------- code ---------- */
+.code{font-family:var(--mono);font-size:17px;line-height:1.6;background:var(--deep);color:#D8DFF7;border-radius:16px;padding:22px 26px;white-space:pre-wrap;word-break:break-word;margin:0}
+.code .k{color:var(--electric)}
+.code .s{color:var(--amber)}
+.code .c{color:#7C88B5}
+.code .ok{color:#6EE7A8}
+.code.big{font-size:19px}
+
+/* ---------- steps ---------- */
+.stepn{display:inline-flex;align-items:center;gap:14px;font-size:20px;font-weight:600;color:var(--electric);margin:0 0 14px}
+.stepn i{font-style:normal;font-family:var(--display);font-weight:900;font-stretch:125%;font-size:20px;background:var(--night);color:var(--amber);border-radius:999px;padding:6px 16px}
+.todo{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:12px}
+.todo li{position:relative;padding-left:34px;font-size:22px;line-height:1.45;color:var(--ink)}
+.todo li::before{content:"";position:absolute;left:4px;top:12px;width:12px;height:12px;border-radius:3px;background:var(--amber)}
+.todo li b{color:var(--night2)}
+.todo li small{display:block;font-size:19px;color:var(--muted)}
+.callout{margin-top:22px;background:var(--night);color:var(--onn);border-radius:18px;padding:20px 26px;display:flex;gap:18px;align-items:flex-start}
+.callout .ic{font-size:30px;line-height:1.1}
+.callout p{margin:0;font-size:21px;line-height:1.5}
+.callout b{color:var(--amber)}
+
+/* ---------- tables ---------- */
+table.cmp{border-collapse:collapse;width:100%;font-size:21px}
+table.cmp th,table.cmp td{text-align:left;padding:11px 16px;border-bottom:1px solid var(--line);vertical-align:top}
+table.cmp th{font-family:var(--display);font-stretch:108%;font-size:20px;color:var(--muted);font-weight:700}
+table.cmp td:first-child{font-family:var(--display);font-weight:800;font-stretch:108%;color:var(--night2);white-space:nowrap}
+table.cmp td.act{font-family:var(--mono);font-size:19px;white-space:nowrap}
+
+/* ---------- flow ---------- */
+.rag{display:grid;grid-template-columns:150px repeat(7,1fr);column-gap:28px;row-gap:56px;margin-top:22px}
+.rlab{font-family:var(--display);font-weight:800;font-stretch:106%;font-size:20px;line-height:1.2;align-self:center}
+.rlab small{display:block;font-family:var(--body);font-weight:500;font-size:16px;color:var(--muted);margin-top:4px}
+.node{position:relative;height:132px;background:var(--card);border:2px solid var(--line);border-radius:16px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:8px;font-size:19px;font-weight:600;line-height:1.2;transition:border-color .35s,background .35s,transform .35s,box-shadow .35s}
+.node .ic{font-size:30px;margin-bottom:6px}
+.node small{font-family:var(--mono);font-weight:400;font-size:14px;color:var(--muted);margin-top:4px}
+.node.arr::after{content:"";position:absolute;left:100%;top:50%;margin-top:-6px;width:28px;height:12px;background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='28' height='12'%3E%3Cpath d='M0 6H24M19 1l6 5-6 5' stroke='%23C3CAD9' stroke-width='2' fill='none'/%3E%3C/svg%3E") no-repeat}
+.node.arr.done::after,.node.arr.on::after{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='28' height='12'%3E%3Cpath d='M0 6H24M19 1l6 5-6 5' stroke='%237D96FF' stroke-width='2.5' fill='none'/%3E%3C/svg%3E")}
+.node.on{border-color:var(--amber);background:#FFF7E8;transform:translateY(-4px) scale(1.04);box-shadow:0 16px 30px -16px rgba(201,131,31,.6)}
+.node.done{border-color:var(--electric)}
+.ragcap{margin-top:36px;display:grid;grid-template-columns:auto 1fr;gap:26px;align-items:center}
+.ragcap .ctl{display:flex;gap:10px}
+.cap{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px 22px;font-size:21px;min-height:92px;line-height:1.4;display:flex;align-items:center}
+.cap span{display:block}
+.cap b{color:var(--night2)}
+
+/* ---------- thanks ---------- */
+.thanks h1{font-family:var(--display);font-weight:900;font-stretch:125%;font-size:170px;line-height:.86;margin:40px 0 50px;letter-spacing:-.02em}
+.thanks h1 span{display:block}
+.socials{display:grid;grid-template-columns:repeat(4,1fr);gap:18px;margin-top:auto}
+.socials a{display:block;text-decoration:none;color:var(--onn);border-top:2px solid rgba(255,255,255,.18);padding-top:16px}
+.socials b{font-family:var(--display);font-weight:800;font-stretch:115%;font-size:32px;display:block}
+.socials span{font-family:var(--mono);font-size:17px;color:var(--onm)}
+.socials a:hover b{color:var(--amber)}
+
+@media (prefers-reduced-motion:reduce){
+  .slide.active [data-a]{animation:none}
+  .caret{animation:none}
+  .node,#bar{transition:none}
+}
+</style>
+</head>
+<body>
+<div id="viewport">
+<div id="stage">
+
+<!-- 1 COVER -->
+<section class="slide dark cover" id="s-cover" data-part="">
+  <div class="gridbg"></div>
+  <div class="keys" data-a style="--d:.9s">Naviga con <kbd>←</kbd> <kbd>→</kbd>, schermo intero con <kbd>F</kbd></div>
+  <h1 data-a style="--d:.05s"><span>Lab Triage AI</span><span class="outline">l'umano firma</span></h1>
+  <p class="sub" data-a style="--d:.25s">PostgreSQL, Ollama, n8n e Telegram: l'AI rileva i lock e propone, una persona approva, il database registra tutto. Cosa fa e come rifarlo da zero.</p>
+  <div class="cterm" data-a style="--d:.65s"><b>$</b> docker compose up -d <span class="caret"></span></div>
+</section>
+
+<!-- 2 AGENDA -->
+<section class="slide" id="s-agenda" data-part="Agenda">
+  <h2 data-a>Il percorso</h2>
+  <p class="lead" data-a style="--d:.1s">Prima capiamo cosa fa il lab e come è costruito, poi lo rifacciamo passo per passo fino al primo lock approvato da Telegram.</p>
+  <div class="agenda">
+    <div class="ag" data-a style="--d:.2s"><div class="n">1</div><h3>Cosa fa</h3><p>Il principio, i tre ruoli e i guardrail che stanno nel database.</p></div>
+    <div class="ag" data-a style="--d:.32s"><div class="n">2</div><h3>Com'è fatto</h3><p>I tre container, il flusso n8n e la base di conoscenza vettoriale.</p></div>
+    <div class="ag hi" data-a style="--d:.44s"><div class="n">3</div><h3>Rifarlo</h3><p>Sette passi: dai file all'avvio, da n8n a Telegram, fino alla prova.</p></div>
+    <div class="ag" data-a style="--d:.56s"><div class="n">4</div><h3>Gestirlo</h3><p>Limiti da conoscere, modifiche frequenti e reset.</p></div>
+  </div>
+</section>
+
+<!-- 3 DIVIDER 1 -->
+<section class="slide dark divider" id="s-d1" data-part="Parte 1">
+  <div class="big" data-a>01</div>
+  <h2 data-a style="--d:.15s">Cosa fa il lab</h2>
+  <p class="lead" data-a style="--d:.3s">Trova le sessioni che bloccano il database e chiede a una persona cosa farne.</p>
+</section>
+
+<!-- 4 PRINCIPIO -->
+<section class="slide" id="s-princ" data-part="Parte 1, Cosa fa">
+  <h2 data-a style="max-width:none">L'AI propone, l'umano firma, il database registra</h2>
+  <p class="lead" data-a style="--d:.1s;max-width:64ch">Ogni 5 minuti il lab cerca i lock su PostgreSQL. Se ne trova uno, un modello locale lo valuta e ti scrive su Telegram: sei tu a decidere se terminare la sessione che blocca.</p>
+  <div class="trio">
+    <div class="concept" data-a style="--d:.2s"><span class="ic">📡</span><h3>ai_monitor</h3><p><b>La sonda.</b> Vede sessioni e lock, legge la base di conoscenza, ma non può modificare nulla. L'unica scrittura concessa è annotare un evento nel registro.</p></div>
+    <div class="concept" data-a style="--d:.3s"><span class="ic">🤖</span><h3>ai_action</h3><p><b>L'automazione AI.</b> Non ha accesso alle tabelle: può solo chiamare la funzione approvata <span class="mono">ops.terminate_session</span>, e solo con una firma.</p></div>
+    <div class="concept" data-a style="--d:.4s"><span class="ic">📒</span><h3>audit_log</h3><p><b>La verifica.</b> Si può solo aggiungere: un trigger blocca modifiche e cancellazioni, anche da superuser.</p></div>
+  </div>
+  <div class="analogy" data-a style="--d:.5s">I controlli non stanno nel flusso di n8n ma nel database. Anche un flusso sbagliato non può fare più di quanto i ruoli consentono.</div>
+</section>
+
+<!-- 5 DIVIDER 2 -->
+<section class="slide dark divider" id="s-d2" data-part="Parte 2">
+  <div class="big" data-a>02</div>
+  <h2 data-a style="--d:.15s">Com'è fatto</h2>
+  <p class="lead" data-a style="--d:.3s">Tre container, un flusso, una base di conoscenza.</p>
+</section>
+
+<!-- 6 ARCHITETTURA -->
+<section class="slide" id="s-arch" data-part="Parte 2, Architettura">
+  <div class="cols" style="align-items:start">
+    <div>
+      <h2 data-a>Tre container, una cartella</h2>
+      <p class="lead" data-a style="--d:.1s">Tutto parte con un comando e tutti i dati restano dentro la cartella del lab, in <span class="mono">data/</span>.</p>
+      <div class="svc">
+        <div data-a style="--d:.2s"><span class="ic">🗄️</span><p style="margin:0"><b>lab-pg, porta 5432</b><span>PostgreSQL 16 con pgvector: dati, registro e vector DB</span></p></div>
+        <div data-a style="--d:.28s"><span class="ic">🤖</span><p style="margin:0"><b>lab-ollama, porta 11434</b><span>llama3.2:3b per il triage, nomic-embed-text per gli embedding</span></p></div>
+        <div data-a style="--d:.36s"><span class="ic">⚙️</span><p style="margin:0"><b>lab-n8n, porta 5678</b><span>il flusso che collega database, modello e Telegram</span></p></div>
+      </div>
+    </div>
+<pre class="code" data-a style="--d:.25s"><span class="c"># docker-compose.yml (estratto)</span>
+<span class="k">services:</span>
+  <span class="k">postgres:</span>
+    <span class="k">image:</span> <span class="s">pgvector/pgvector:pg16</span>
+    <span class="k">container_name:</span> <span class="s">lab-pg</span>
+    <span class="k">ports:</span> [<span class="s">"5432:5432"</span>]
+    <span class="k">volumes:</span>
+      - <span class="s">./data/postgres:/var/lib/postgresql/data</span>
+      - <span class="s">./init:/docker-entrypoint-initdb.d:ro</span>
+
+  <span class="k">ollama:</span>
+    <span class="k">image:</span> <span class="s">ollama/ollama:latest</span>
+    <span class="k">container_name:</span> <span class="s">lab-ollama</span>
+    <span class="k">ports:</span> [<span class="s">"11434:11434"</span>]
+    <span class="k">volumes:</span> [<span class="s">"./data/ollama:/root/.ollama"</span>]
+
+  <span class="k">n8n:</span>
+    <span class="k">image:</span> <span class="s">n8nio/n8n:latest</span>
+    <span class="k">container_name:</span> <span class="s">lab-n8n</span>
+    <span class="k">ports:</span> [<span class="s">"5678:5678"</span>]
+    <span class="k">volumes:</span> [<span class="s">"./data/n8n:/home/node/.n8n"</span>]</pre>
+  </div>
+</section>
+
+<!-- 7 FLUSSO -->
+<section class="slide" id="s-flow" data-part="Parte 2, Il flusso n8n">
+  <h2 data-a style="max-width:none">Il flusso, dal lock alla firma</h2>
+  <div class="rag" data-a style="--d:.15s">
+    <div class="rlab">Rileva blocco<small>come ai_monitor</small></div>
+    <div class="node arr" id="n-trig"><span class="ic">⏱️</span>Ogni 5 minuti</div>
+    <div class="node arr" id="n-lock"><span class="ic">🔍</span>Sessioni bloccanti</div>
+    <div class="node arr" id="n-emb"><span class="ic">🧮</span>Embedding</div>
+    <div class="node arr" id="n-kb"><span class="ic">🗄️</span>Vector DB</div>
+    <div class="node arr" id="n-prompt"><span class="ic">📝</span>Prompt</div>
+    <div class="node arr" id="n-llm"><span class="ic">🤖</span>Ollama</div>
+    <div class="node" id="n-check"><span class="ic">✅</span>Controllo risposta</div>
+
+    <div class="rlab">Firma ed esegui<small>serve una persona</small></div>
+    <div class="node arr" id="n-prop"><span class="ic">📒</span>Registra<small>PROPOSED</small></div>
+    <div class="node arr" id="n-tg"><span class="ic">💬</span>Telegram<small>Approva / Rifiuta</small></div>
+    <div class="node arr" id="n-if"><span class="ic">🔀</span>Approvata?</div>
+    <div class="node arr" id="n-term"><span class="ic">✂️</span>Termina sessione<small>come ai_action</small></div>
+    <div class="node" id="n-esito"><span class="ic">📣</span>Esito su Telegram</div>
+    <div class="node" id="n-rej"><span class="ic">🚫</span>Registra<small>REJECTED</small></div>
+    <div></div>
+  </div>
+  <div class="ragcap" data-a style="--d:.3s">
+    <div class="ctl"><button class="btn" id="fl1">▶ Rilevazione</button><button class="btn amber" id="fl2">▶ Approva</button><button class="btn" id="fl3">▶ Rifiuta</button></div>
+    <div class="cap" id="flcap"></div>
+  </div>
+</section>
+
+<!-- 8 VECTOR DB -->
+<section class="slide" id="s-kb" data-part="Parte 2, Base di conoscenza">
+  <div class="cols wide-r" style="align-items:start">
+    <div>
+      <h2 data-a>La severità arriva dal vector DB</h2>
+      <p class="lead" data-a style="--d:.1s">I criteri non stanno nel prompt: sono un documento, <span class="mono">kb/severita.txt</span>, caricato in PostgreSQL con pgvector.</p>
+      <ul class="todo" data-a style="--d:.2s">
+        <li><b>Una sezione, un frammento</b><small>con il suo embedding a 768 dimensioni</small></li>
+        <li><b>Soglie come metadati</b><small>il database filtra sui numeri e sceglie la severità più grave tra quelle applicabili</small></li>
+        <li><b>Similarità per il contesto</b><small>le regole generali più vicine alla situazione</small></li>
+      </ul>
+    </div>
+    <div data-a style="--d:.25s">
+      <table class="cmp">
+        <tr><th></th><th>Attesa massima</th><th></th><th>Sessioni bloccate</th><th>Azione</th></tr>
+        <tr><td>P1</td><td>oltre 300 s</td><td>oppure</td><td>più di 5</td><td class="act">TERMINA</td></tr>
+        <tr><td>P2</td><td>da 60 a 300 s</td><td>oppure</td><td>da 2 a 5</td><td class="act">TERMINA</td></tr>
+        <tr><td>P3</td><td>da 10 a 60 s</td><td>e</td><td>una sola</td><td class="act">ATTENDI</td></tr>
+        <tr><td>P4</td><td>sotto 10 s</td><td>e</td><td>una sola</td><td class="act">ATTENDI</td></tr>
+      </table>
+      <div class="callout"><span class="ic">💡</span><p><b>Perché le soglie:</b> la sola ricerca per similarità non distingue «5 secondi» da «400 secondi», e un modello piccolo sbaglia i confronti. Con il filtro sui metadati la severità è sempre quella del documento.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- 9 DIVIDER 3 -->
+<section class="slide dark divider" id="s-d3" data-part="Parte 3">
+  <div class="big" data-a>03</div>
+  <h2 data-a style="--d:.15s">Rifarlo da zero</h2>
+  <p class="lead" data-a style="--d:.3s">Sette passi. Servono Docker con Compose, circa 3 GB liberi e un account Telegram.</p>
+</section>
+
+<!-- 10 PASSO 1 -->
+<section class="slide" id="s-p1" data-part="Parte 3, Passo 1 di 7">
+  <div class="cols" style="align-items:start">
+    <div>
+      <div class="stepn" data-a><i>PASSO 1</i> Preparazione</div>
+      <h2 data-a style="--d:.05s">La cartella e le password</h2>
+      <ul class="todo" data-a style="--d:.15s">
+        <li><b>Copia la cartella del lab</b><small>servono docker-compose.yml, .env.example e le cartelle init, kb, query, test, workflow</small></li>
+        <li><b>Crea il file .env</b><small>partendo da .env.example</small></li>
+        <li><b>Scegli tre password</b><small>per postgres, ai_monitor e ai_action; evita il carattere $</small></li>
+        <li><b>Genera la chiave di n8n</b><small>cifra le credenziali salvate: non va più cambiata</small></li>
+      </ul>
+    </div>
+    <div data-a style="--d:.2s">
+<pre class="code big"><span class="k">cd</span> triage
+<span class="k">cp</span> .env.example .env
+
+<span class="c"># chiave di cifratura di n8n</span>
+KEY=$(<span class="k">openssl</span> rand -hex 24)
+<span class="k">sed</span> -i <span class="s">"s/cambia_con_openssl_rand/$KEY/"</span> .env
+
+<span class="c"># le tre password</span>
+<span class="k">nano</span> .env</pre>
+      <div class="callout"><span class="ic">⚠️</span><p><b>Prima del primo avvio:</b> gli script in <span class="mono">init/</span> creano i ruoli una volta sola, con le password che trovano in <span class="mono">.env</span> in quel momento.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- 11 PASSO 2 -->
+<section class="slide" id="s-p2" data-part="Parte 3, Passo 2 di 7">
+  <div class="cols" style="align-items:start">
+    <div>
+      <div class="stepn" data-a><i>PASSO 2</i> Avvio</div>
+      <h2 data-a style="--d:.05s">Container e modelli</h2>
+      <ul class="todo" data-a style="--d:.15s">
+        <li><b>Avvia lo stack</b><small>al primo avvio PostgreSQL esegue i due script di init</small></li>
+        <li><b>Controlla lab-pg</b><small>deve risultare healthy, e il log deve confermare l'init</small></li>
+        <li><b>Scarica i due modelli</b><small>uno per il triage (2 GB), uno per gli embedding (270 MB)</small></li>
+      </ul>
+      <p class="hint" data-a style="--d:.3s;margin-top:22px">Le porte 5432, 11434 e 5678 devono essere libere.</p>
+    </div>
+<pre class="code big" data-a style="--d:.2s"><span class="k">docker compose</span> up -d
+<span class="k">docker compose</span> ps
+<span class="c"># lab-pg   Up (healthy)</span>
+
+<span class="k">docker logs</span> lab-pg 2&gt;&amp;1 | grep <span class="s">"Lab triage"</span>
+<span class="ok">&gt;&gt;&gt; Lab triage: schema ops, ruoli ... creati.
+&gt;&gt;&gt; Lab triage: schema kb (pgvector) creato.</span>
+
+<span class="k">docker exec</span> lab-ollama ollama pull <span class="s">llama3.2:3b</span>
+<span class="k">docker exec</span> lab-ollama ollama pull <span class="s">nomic-embed-text</span></pre>
+  </div>
+</section>
+
+<!-- 12 PASSO 3 -->
+<section class="slide" id="s-p3" data-part="Parte 3, Passo 3 di 7">
+  <div class="cols wide-r" style="align-items:start">
+    <div>
+      <div class="stepn" data-a><i>PASSO 3</i> Verifica</div>
+      <h2 data-a style="--d:.05s">I guardrail tengono?</h2>
+      <p class="lead" data-a style="--d:.1s">Prima di collegare l'AI si prova a mano che i ruoli facciano solo ciò che devono.</p>
+      <ul class="todo" data-a style="--d:.2s">
+        <li><b>Il monitor legge</b><small>ma non scrive e non termina</small></li>
+        <li><b>Senza firma si rifiuta</b><small>approved_by vuoto = errore</small></li>
+        <li><b>Il registro non si cancella</b><small>nemmeno da superuser</small></li>
+      </ul>
+    </div>
+<pre class="code" data-a style="--d:.2s"><span class="c"># ai_monitor vede...</span>
+<span class="k">docker exec</span> lab-pg psql -U ai_monitor -d labdb \
+  -c <span class="s">"SELECT count(*) FROM pg_stat_activity;"</span>
+<span class="c"># ...ma non tocca</span>
+<span class="k">docker exec</span> lab-pg psql -U ai_monitor -d labdb \
+  -c <span class="s">"UPDATE ordini SET stato='x' WHERE id=2;"</span>
+<span class="ok">ERROR: permission denied for table ordini</span>
+
+<span class="c"># ai_action senza firma</span>
+<span class="k">docker exec</span> lab-pg psql -U ai_action -d labdb \
+  -c <span class="s">"SELECT ops.terminate_session(1, '', 'test');"</span>
+<span class="ok">ERROR: Azione rifiutata: manca la firma umana</span>
+
+<span class="c"># il registro è append-only</span>
+<span class="k">docker exec</span> lab-pg psql -U postgres -d labdb \
+  -c <span class="s">"DELETE FROM ops.audit_log;"</span>
+<span class="ok">ERROR: audit_log è append-only: DELETE non consentito</span></pre>
+  </div>
+</section>
+
+<!-- 13 PASSO 4 -->
+<section class="slide" id="s-p4" data-part="Parte 3, Passo 4 di 7">
+  <div class="cols" style="align-items:start">
+    <div>
+      <div class="stepn" data-a><i>PASSO 4</i> Base di conoscenza</div>
+      <h2 data-a style="--d:.05s">Caricare il documento</h2>
+      <ul class="todo" data-a style="--d:.15s">
+        <li><b>Lancia lo script di caricamento</b><small>divide il documento in sezioni, calcola gli embedding con Ollama e li salva in kb.documenti</small></li>
+        <li><b>Controlla le righe</b><small>cinque frammenti: regole generali e P1, P2, P3, P4 con le soglie</small></li>
+        <li><b>Rilancialo a ogni modifica</b><small>se cambi una soglia nel testo, cambia anche la riga «soglie» della stessa sezione</small></li>
+      </ul>
+    </div>
+<pre class="code big" data-a style="--d:.2s"><span class="k">bash</span> kb/carica-kb.sh
+<span class="ok">  severita / Regole generali: 768 dimensioni
+  severita / P1: 768 dimensioni, soglie {...}
+  severita / P2: 768 dimensioni, soglie {...}
+  severita / P3: 768 dimensioni, soglie {...}
+  severita / P4: 768 dimensioni, soglie {...}
+&gt;&gt;&gt; 5 frammenti caricati da kb/severita.txt</span>
+
+<span class="k">docker exec</span> lab-pg psql -U ai_monitor -d labdb \
+  -c <span class="s">"SELECT sezione, meta FROM kb.documenti;"</span></pre>
+  </div>
+</section>
+
+<!-- 14 PASSO 5 -->
+<section class="slide" id="s-p5" data-part="Parte 3, Passo 5 di 7">
+  <div class="stepn" data-a><i>PASSO 5</i> n8n</div>
+  <h2 data-a style="--d:.05s;max-width:none">Credenziali e flusso in n8n</h2>
+  <p class="lead" data-a style="--d:.1s;max-width:64ch">Apri <span class="mono">http://localhost:5678</span> e crea l'account proprietario. Poi tre credenziali e un'importazione.</p>
+  <div class="cols" style="align-items:start;gap:40px">
+    <div data-a style="--d:.2s">
+      <table class="cmp">
+        <tr><th>Credenziale</th><th>Tipo</th><th>Valori</th></tr>
+        <tr><td>Lab PG - ai_monitor</td><td>Postgres</td><td>host <span class="mono">postgres</span>, database <span class="mono">labdb</span>, utente <span class="mono">ai_monitor</span></td></tr>
+        <tr><td>Lab PG - ai_action</td><td>Postgres</td><td>come sopra, utente <span class="mono">ai_action</span></td></tr>
+        <tr><td>Telegram</td><td>Telegram API</td><td>il token del bot (passo 6)</td></tr>
+      </table>
+      <p class="hint" style="margin-top:16px">Dentro la rete Docker l'host è <span class="mono">postgres</span>, non localhost. Dopo il salvataggio deve comparire «Connection tested successfully».</p>
+    </div>
+    <ul class="todo" data-a style="--d:.3s">
+      <li><b>Importa il flusso</b><small>nuovo workflow, menu ⋯, Import from File: workflow/triage-sessioni-bloccanti.json</small></li>
+      <li><b>Assegna le credenziali ai nodi</b><small>ai_action solo su «Termina sessione»; ai_monitor sugli altri quattro nodi Postgres; Telegram sui due nodi Telegram</small></li>
+      <li><b>Compila il nodo Config</b><small>chatId Telegram e nome dell'approvatore</small></li>
+    </ul>
+  </div>
+</section>
+
+<!-- 15 PASSO 6 -->
+<section class="slide" id="s-p6" data-part="Parte 3, Passo 6 di 7">
+  <div class="cols" style="align-items:start">
+    <div>
+      <div class="stepn" data-a><i>PASSO 6</i> Telegram</div>
+      <h2 data-a style="--d:.05s">Il bot che chiede la firma</h2>
+      <ul class="todo" data-a style="--d:.15s">
+        <li><b>Crea il bot con @BotFather</b><small>comando /newbot: scegli nome e username, ricevi il token</small></li>
+        <li><b>Incolla il token in n8n</b><small>nella credenziale Telegram; non condividerlo e non salvarlo nei file</small></li>
+        <li><b>Premi Start nella chat del bot</b><small>finché non lo fai il bot non può scriverti</small></li>
+        <li><b>Trova il tuo chat ID</b><small>in Telegram Web apri «Saved Messages»: è il numero in fondo all'indirizzo</small></li>
+      </ul>
+    </div>
+    <div data-a style="--d:.2s">
+<pre class="code big"><span class="c"># docker-compose.yml, servizio n8n</span>
+<span class="k">environment:</span>
+  <span class="k">WEBHOOK_URL:</span> <span class="s">"http://IP-DI-QUESTO-PC:5678/"</span>
+
+<span class="c"># dopo la modifica</span>
+<span class="k">docker compose</span> up -d n8n</pre>
+      <div class="callout"><span class="ic">🔗</span><p><b>Perché l'IP:</b> i pulsanti Approva e Rifiuta sono link verso n8n. Con l'IP di rete del PC funzionano anche dal telefono, purché sia sulla stessa rete. Se l'IP cambia, va aggiornato.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- 16 PASSO 7 -->
+<section class="slide" id="s-p7" data-part="Parte 3, Passo 7 di 7">
+  <div class="cols wide-r" style="align-items:start">
+    <div>
+      <div class="stepn" data-a><i>PASSO 7</i> La prova</div>
+      <h2 data-a style="--d:.05s">Il primo lock approvato</h2>
+      <ul class="todo" data-a style="--d:.15s">
+        <li><b>Crea un lock di prova</b><small>dura 5 minuti, poi si scioglie da solo</small></li>
+        <li><b>Lancia il flusso</b><small>in n8n, pulsante «Execute workflow»</small></li>
+        <li><b>Rispondi su Telegram</b><small>arriva il messaggio con severità, utente, IP e query: premi Approva o Rifiuta</small></li>
+        <li><b>Leggi il registro</b><small>PROPOSED, poi EXECUTED oppure REJECTED</small></li>
+        <li><b>Pubblica il flusso</b><small>con «Publish» parte da solo ogni 5 minuti</small></li>
+      </ul>
+    </div>
+<pre class="code" data-a style="--d:.2s"><span class="k">bash</span> test/genera-lock.sh
+
+<span class="c"># dopo aver risposto su Telegram</span>
+<span class="k">docker exec</span> lab-pg psql -U postgres -d labdb -c \
+  <span class="s">"SELECT id, actor, action, target, severity,
+          approved_by, outcome
+   FROM ops.audit_log ORDER BY id DESC LIMIT 2;"</span>
+
+<span class="ok"> id |   actor    |  action  | target  | sev | approved_by | outcome
+----+------------+----------+---------+-----+-------------+-----------
+ 13 | ai_action  | EXECUTED | pid=857 |     | DbAdmin     | terminata
+ 12 | ai_monitor | PROPOSED | pid=857 | P3  |             |</span></pre>
+  </div>
+</section>
+
+<!-- 17 DIVIDER 4 -->
+<section class="slide dark divider" id="s-d4" data-part="Parte 4">
+  <div class="big" data-a>04</div>
+  <h2 data-a style="--d:.15s">Gestirlo</h2>
+  <p class="lead" data-a style="--d:.3s">Cosa sapere prima di fidarsi, e come ripartire da capo.</p>
+</section>
+
+<!-- 18 LIMITI E RESET -->
+<section class="slide" id="s-lim" data-part="Parte 4, Limiti e reset">
+  <h2 data-a>Limiti da conoscere</h2>
+  <div class="cols" style="align-items:start">
+    <div class="concepts">
+      <div class="concept" data-a style="--d:.1s"><h3>Chi firma davvero</h3><p>Nel registro finisce il nome scritto nel nodo Config, <b>non l'identità di chi ha premuto il pulsante</b>. Chi ha il link può approvare.</p></div>
+      <div class="concept" data-a style="--d:.2s"><h3>Approva termina sempre</h3><p>Anche quando la proposta dell'AI è ATTENDI: il pulsante significa <b>«termina la sessione bloccante»</b>.</p></div>
+      <div class="concept" data-a style="--d:.3s"><h3>Il modello spiega, non decide</h3><p>La severità è quella del vector DB. La frase di motivazione è scritta dal modello e <b>può contenere numeri imprecisi</b>.</p></div>
+    </div>
+    <div data-a style="--d:.25s">
+<pre class="code big"><span class="c"># reset del solo database:</span>
+<span class="c"># registro e vector DB ripartono da zero</span>
+<span class="k">docker compose</span> down
+<span class="k">sudo rm</span> -rf data/postgres
+<span class="k">docker compose</span> up -d
+<span class="k">bash</span> kb/carica-kb.sh</pre>
+      <div class="callout"><span class="ic">🗂️</span><p><b>Cosa c'è in data/:</b> <span class="mono">postgres</span> il database, <span class="mono">ollama</span> i modelli, <span class="mono">n8n</span> flussi e credenziali. Il dettaglio di ogni file è in <span class="mono">environment.txt</span>.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- 19 THANKS -->
+<section class="slide dark thanks" id="s-end" data-part="">
+  <div class="gridbg"></div>
+  <h1 data-a><span>Fatto.</span><span class="outline">Fine</span></h1>
+  <div class="socials" data-a style="--d:.25s">
+    <a href="https://www.linkedin.com/in/qscaramastra/" target="_blank" rel="noopener"><b>LinkedIn</b><span>in/qscaramastra</span></a>
+    <a href="https://bsky.app/profile/qscaram.bsky.social" target="_blank" rel="noopener"><b>Bluesky</b><span>@qscaram.bsky.social</span></a>
+    <a href="https://x.com/QuirinoScaram" target="_blank" rel="noopener"><b>X</b><span>@QuirinoScaram</span></a>
+    <a href="https://substack.com/@quirinoscaramastra" target="_blank" rel="noopener"><b>Substack</b><span>@quirinoscaramastra</span></a>
+  </div>
+</section>
+
+<div id="chrome"><span id="c-part"></span><div class="navs"><span id="c-num"></span><button id="c-prev" aria-label="Slide precedente">←</button><button id="c-next" aria-label="Slide successiva">→</button></div></div>
+<div id="bar"></div>
+</div>
+</div>
+
+<script>
+(function(){
+"use strict";
+var RM = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+var stage = document.getElementById('stage');
+var slides = Array.prototype.slice.call(document.querySelectorAll('.slide'));
+var cur = 0, hooks = {}, groups = [];
+function $(id){ return document.getElementById(id); }
+function tg(){ var g={ids:[],later:function(f,ms){g.ids.push(setTimeout(f,ms));},clear:function(){g.ids.forEach(clearTimeout);g.ids=[];}}; groups.push(g); return g; }
+
+/* ---------- scaling & navigation ---------- */
+function fit(){ var s=Math.min(window.innerWidth/1600, window.innerHeight/900); stage.style.transform='scale('+s+')'; }
+window.addEventListener('resize', fit); fit();
+
+function go(n){
+  n = Math.max(0, Math.min(slides.length-1, n));
+  groups.forEach(function(g){ g.clear(); });
+  slides[cur].classList.remove('active');
+  cur = n;
+  var s = slides[cur];
+  s.classList.add('active');
+  stage.classList.toggle('on-dark', s.classList.contains('dark'));
+  $('c-part').textContent = s.getAttribute('data-part') || '';
+  $('c-num').textContent = (cur+1) + ' / ' + slides.length;
+  $('bar').style.width = ((cur+1)/slides.length*100) + '%';
+  try{ history.replaceState(null,'','#'+(cur+1)); }catch(e){}
+  if(hooks[s.id]) hooks[s.id]();
+}
+document.addEventListener('keydown', function(e){
+  var tag = (e.target && e.target.tagName) || '';
+  if(e.key==='ArrowRight' || e.key==='PageDown' || (e.key===' ' && tag!=='BUTTON')){ e.preventDefault(); go(cur+1); }
+  else if(e.key==='ArrowLeft' || e.key==='PageUp'){ e.preventDefault(); go(cur-1); }
+  else if(e.key==='Home'){ go(0); } else if(e.key==='End'){ go(slides.length-1); }
+  else if(e.key==='f' || e.key==='F'){
+    try{ if(!document.fullscreenElement) document.documentElement.requestFullscreen(); else document.exitFullscreen(); }catch(err){}
+  }
+});
+$('c-prev').addEventListener('click', function(){ go(cur-1); });
+$('c-next').addEventListener('click', function(){ go(cur+1); });
+
+/* ---------- flusso n8n ---------- */
+(function(){
+  var cap=$('flcap'), g=tg();
+  var ids=['n-trig','n-lock','n-emb','n-kb','n-prompt','n-llm','n-check','n-prop','n-tg','n-if','n-term','n-esito','n-rej'];
+  var idle='<span>Avvia la rilevazione, poi scegli come risponde la persona.</span>';
+  var f1=[
+    {on:['n-trig'],t:'<b>Ogni 5 minuti</b> il flusso parte da solo, se è pubblicato. Un nodo Config tiene i parametri: chat, approvatore, modelli.'},
+    {on:['n-lock'],t:'<b>Sessioni bloccanti:</b> una query fissa su <span class="mono">pg_stat_activity</span> trova chi blocca chi, con utente, IP e query. Nessun lock: il flusso si ferma qui.'},
+    {on:['n-emb'],t:'<b>Embedding:</b> la situazione («attesa massima 90 secondi, 1 sessione bloccata») diventa un vettore con nomic-embed-text.'},
+    {on:['n-kb'],t:'<b>Vector DB:</b> PostgreSQL restituisce il criterio di severità applicabile (filtro sulle soglie) e le regole generali più vicine (similarità).'},
+    {on:['n-prompt'],t:'<b>Prompt:</b> situazione e criterio recuperato diventano un unico testo: «usa solo quanto riportato dalla base di conoscenza».'},
+    {on:['n-llm'],t:'<b>Ollama:</b> llama3.2:3b risponde in JSON con severità, azione proposta e una frase di motivazione.'},
+    {on:['n-check'],t:'<b>Controllo:</b> la severità che fa fede è quella del vector DB; una risposta illeggibile diventa ATTENDI. Qui si compone il messaggio.'},
+    {on:['n-prop'],t:'<b>PROPOSED:</b> la proposta entra nel registro prima che qualcuno la veda. Resta traccia anche se nessuno risponde.'},
+    {on:['n-tg'],t:'<b>Telegram:</b> arriva il messaggio con due pulsanti e il flusso si mette in attesa della risposta.'}
+  ];
+  var f2=[
+    {on:['n-tg'],t:'<b>Approva:</b> il pulsante è un link verso n8n, che riprende il flusso da dove si era fermato.'},
+    {on:['n-if'],t:'<b>Approvata?</b> Sì: si prosegue sul ramo dell\'esecuzione.'},
+    {on:['n-term'],t:'<b>Termina sessione:</b> l\'unico nodo che usa ai_action. Chiama <span class="mono">ops.terminate_session(pid, approvatore, motivo)</span>; la funzione scrive da sola EXECUTED o FAILED.'},
+    {on:['n-esito'],t:'<b>Esito:</b> su Telegram arriva la conferma, «Sessione pid … terminata».'}
+  ];
+  var f3=[
+    {on:['n-tg'],t:'<b>Rifiuta:</b> anche questo pulsante riporta la risposta a n8n.'},
+    {on:['n-if'],t:'<b>Approvata?</b> No: si prende l\'altro ramo.'},
+    {on:['n-rej'],t:'<b>REJECTED:</b> il rifiuto viene registrato con il nome dell\'approvatore. Nessuna azione sul database: il lock resta.'}
+  ];
+  function clearAll(){ ids.forEach(function(id){ $(id).classList.remove('on','done'); }); }
+  function settle(){ ids.forEach(function(id){ var n=$(id); if(n.classList.contains('on')){ n.classList.remove('on'); n.classList.add('done'); } }); }
+  function play(flow, doneMsg, keep){
+    g.clear(); if(!keep) clearAll(); else { $('n-if').classList.remove('on','done'); $('n-term').classList.remove('on','done'); $('n-esito').classList.remove('on','done'); $('n-rej').classList.remove('on','done'); }
+    var D=RM?700:2600;
+    flow.forEach(function(s,i){
+      g.later(function(){
+        settle();
+        s.on.forEach(function(id){ $(id).classList.remove('done'); $(id).classList.add('on'); });
+        cap.innerHTML='<span>'+s.t+'</span>';
+      }, i*D);
+    });
+    g.later(function(){ settle(); cap.innerHTML='<span>'+doneMsg+'</span>'; }, flow.length*D);
+  }
+  $('fl1').addEventListener('click', function(){ play(f1,'<b>In attesa.</b> Ora tocca alla persona: Approva o Rifiuta.', false); });
+  $('fl2').addEventListener('click', function(){ play(f2,'<b>Eseguito.</b> Nel registro: PROPOSED, poi EXECUTED con la firma.', true); });
+  $('fl3').addEventListener('click', function(){ play(f3,'<b>Rifiutato.</b> Nel registro: PROPOSED, poi REJECTED.', true); });
+  hooks['s-flow']=function(){ clearAll(); cap.innerHTML=idle; };
+})();
+
+/* ---------- start ---------- */
+var start=parseInt((location.hash||'').replace('#',''),10);
+slides[0].classList.add('active');
+go(isNaN(start)?0:start-1);
+})();
+</script>
+</body>
+</html>

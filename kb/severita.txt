@@ -1,0 +1,25 @@
+# Criteri di severità per i lock su PostgreSQL
+
+<!-- Le righe "soglie" sono lette da kb/carica-kb.sh e salvate come metadati:
+     una severità si applica se attesa >= attesa_min OPPURE sessioni >= sessioni_min;
+     tra quelle applicabili vince la più grave (gravita più bassa).
+     Se cambi il testo di una sezione, cambia anche la sua riga di soglie, poi ricarica. -->
+
+## Regole generali
+La severità di un lock si decide guardando due numeri: l'attesa massima in secondi delle sessioni bloccate e il numero di sessioni bloccate. Si valuta ciascun numero separatamente e si assegna la severità più grave tra le due. La durata della transazione bloccante non decide la severità: serve solo a capire se la sessione bloccante è abbandonata. Non contano il nome dell'utente né il testo della query.
+
+## P1
+<!-- soglie: gravita=1 attesa_min=301 sessioni_min=6 -->
+Severità P1, critica. Si assegna quando l'attesa massima supera i 300 secondi (più di 5 minuti) oppure quando le sessioni bloccate sono più di 5 (6 o più). Il servizio è di fatto fermo. Azione proposta: TERMINA la sessione bloccante.
+
+## P2
+<!-- soglie: gravita=2 attesa_min=60 sessioni_min=2 -->
+Severità P2, alta. Si assegna quando l'attesa massima è compresa tra 60 e 300 secondi (da 1 a 5 minuti) oppure quando le sessioni bloccate sono da 2 a 5. Gli utenti percepiscono il rallentamento. Azione proposta: TERMINA la sessione bloccante.
+
+## P3
+<!-- soglie: gravita=3 attesa_min=10 -->
+Severità P3, media. Si assegna quando l'attesa massima è compresa tra 10 e 60 secondi e c'è una sola sessione bloccata. Il disagio è limitato. Azione proposta: ATTENDI e ricontrolla al giro successivo; TERMINA solo se la sessione bloccante è in stato idle in transaction.
+
+## P4
+<!-- soglie: gravita=4 attesa_min=0 -->
+Severità P4, bassa. Si assegna quando l'attesa massima è inferiore a 10 secondi e c'è una sola sessione bloccata. È un lock fisiologico che di norma si risolve da solo. Azione proposta: ATTENDI.

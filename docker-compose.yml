@@ -1,0 +1,60 @@
+# Lab Triage AI
+# Copyright (c) 2026 Quirino Scaramastra
+# SPDX-License-Identifier: MIT
+
+# Lab Triage AI — PostgreSQL + Ollama + n8n
+# Porte standard (lo stack esistente in ~/docker deve restare spento):
+#   PostgreSQL 5432 · Ollama 11434 · n8n 5678
+# Dentro la rete docker i servizi si chiamano: postgres:5432, ollama:11434
+# Dati persistenti in ./data/{postgres,ollama,n8n} (bind mount, niente volumi docker)
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16   # postgres 16 + estensione pgvector
+    container_name: lab-pg
+    restart: unless-stopped
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: labdb
+      TZ: Europe/Rome
+      # lette dallo script di init per creare i ruoli
+      AI_MONITOR_PASSWORD: ${AI_MONITOR_PASSWORD}
+      AI_ACTION_PASSWORD: ${AI_ACTION_PASSWORD}
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./data/postgres:/var/lib/postgresql/data
+      - ./init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d labdb"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: lab-ollama
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    volumes:
+      - ./data/ollama:/root/.ollama
+
+  n8n:
+    image: n8nio/n8n:latest
+    container_name: lab-n8n
+    restart: unless-stopped
+    environment:
+      GENERIC_TIMEZONE: Europe/Rome
+      TZ: Europe/Rome
+      N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY}
+      N8N_SECURE_COOKIE: "false"
+      # indirizzo usato nei link dei pulsanti Telegram (Approva / Rifiuta): IP di rete di questo PC
+      WEBHOOK_URL: "http://IP-DI-QUESTO-PC:5678/"   # da sostituire con l'IP di rete del PC
+    ports:
+      - "5678:5678"
+    volumes:
+      - ./data/n8n:/home/node/.n8n
+    depends_on:
+      postgres:
+        condition: service_healthy
