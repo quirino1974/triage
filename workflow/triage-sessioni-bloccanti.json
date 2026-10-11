@@ -1,5 +1,5 @@
 {
-  "name": "Lab Triage - sessioni bloccanti",
+  "name": "Triage sessioni bloccanti PostgreSQL con Ollama e approvazione Telegram",
   "nodes": [
     {
       "parameters": {
@@ -33,7 +33,7 @@
             {
               "id": "296ea575-fac1-42b6-b1d6-863d84ff1ff1",
               "name": "approvatore",
-              "value": "DbAdmin",
+              "value": "INSERISCI_NOME_APPROVATORE",
               "type": "string"
             },
             {
@@ -72,7 +72,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "-- Sessioni bloccate e chi le blocca (da query/sessioni_bloccanti.sql),\n-- escluse quelle per cui esiste già una proposta negli ultimi 30 minuti.\nSELECT\n    bloccata.pid                                      AS pid_bloccato,\n    bloccata.usename                                  AS utente_bloccato,\n    host(bloccata.client_addr)                        AS ip_bloccato,\n    left(bloccata.query, 120)                         AS query_bloccata,\n    round(extract(epoch FROM now() - bloccata.query_start))::int AS attesa_sec,\n    bloccante.pid                                     AS pid_bloccante,\n    bloccante.usename                                 AS utente_bloccante,\n    host(bloccante.client_addr)                       AS ip_bloccante,\n    bloccante.application_name                        AS applicazione_bloccante,\n    bloccante.state                                   AS stato_bloccante,\n    left(bloccante.query, 120)                        AS query_bloccante,\n    round(extract(epoch FROM now() - bloccante.xact_start))::int AS durata_tx_bloccante_sec\nFROM pg_stat_activity bloccata\nJOIN LATERAL unnest(pg_blocking_pids(bloccata.pid)) AS b(pid) ON true\nJOIN pg_stat_activity bloccante ON bloccante.pid = b.pid\nWHERE bloccata.datname = current_database()\n  AND NOT EXISTS (\n      SELECT 1 FROM ops.audit_log a\n      WHERE a.action = 'PROPOSED'\n        AND a.target = 'pid=' || bloccante.pid\n        AND a.ts > now() - interval '30 minutes')\nORDER BY attesa_sec DESC;",
+        "query": "-- Sessioni bloccate e chi le blocca,\n-- escluse quelle per cui esiste già una proposta negli ultimi 30 minuti.\nSELECT\n    bloccata.pid                                      AS pid_bloccato,\n    bloccata.usename                                  AS utente_bloccato,\n    host(bloccata.client_addr)                        AS ip_bloccato,\n    left(bloccata.query, 120)                         AS query_bloccata,\n    round(extract(epoch FROM now() - bloccata.query_start))::int AS attesa_sec,\n    bloccante.pid                                     AS pid_bloccante,\n    bloccante.usename                                 AS utente_bloccante,\n    host(bloccante.client_addr)                       AS ip_bloccante,\n    bloccante.application_name                        AS applicazione_bloccante,\n    bloccante.state                                   AS stato_bloccante,\n    left(bloccante.query, 120)                        AS query_bloccante,\n    round(extract(epoch FROM now() - bloccante.xact_start))::int AS durata_tx_bloccante_sec\nFROM pg_stat_activity bloccata\nJOIN LATERAL unnest(pg_blocking_pids(bloccata.pid)) AS b(pid) ON true\nJOIN pg_stat_activity bloccante ON bloccante.pid = b.pid\nWHERE bloccata.datname = current_database()\n  AND NOT EXISTS (\n      SELECT 1 FROM ops.audit_log a\n      WHERE a.action = 'PROPOSED'\n        AND a.target = 'pid=' || bloccante.pid\n        AND a.ts > now() - interval '30 minutes')\nORDER BY attesa_sec DESC;",
         "options": {}
       },
       "id": "896d0044-a17e-4a6b-b682-3698ca693a79",
@@ -86,7 +86,7 @@
       "notesInFlow": true,
       "credentials": {
         "postgres": {
-          "name": "Lab PG - ai_monitor"
+          "name": "Postgres - ai_monitor"
         }
       },
       "notes": "Credenziale: ai_monitor. Nessuna riga = il flusso si ferma qui"
@@ -127,7 +127,7 @@
     {
       "parameters": {
         "mode": "runOnceForEachItem",
-        "jsCode": "// Valida la risposta di Ollama: se non è JSON valido si ripiega su valori prudenti.\nconst { domanda, ...s } = $('Raggruppa per bloccante').item.json;\nconst kb = $('Componi prompt').item.json;\n\nlet p = {};\ntry { p = JSON.parse($json.response); } catch (e) { p = {}; }\n\n// La severità fa fede dal vector DB; se il modello ne riporta una diversa lo si annota nel dettaglio.\nconst severity_modello = ['P1', 'P2', 'P3', 'P4'].includes(p.severity) ? p.severity : null;\nconst severity = kb.severita_kb ?? severity_modello ?? 'P3';\nconst azione = p.azione === 'TERMINA' ? 'TERMINA' : 'ATTENDI';\nconst motivazione = String(p.motivazione || 'risposta del modello non interpretabile').slice(0, 300);\n\n// Telegram interpreta il testo come Markdown: i caratteri _ * ` [ vanno preceduti da \\\n// altrimenti nomi come app_user fanno fallire l'invio (\"can't parse entities\").\nconst esc = v => String(v ?? '').replace(/([_*`\\[])/g, '\\\\$1');\nconst messaggio = [\n  `🚨 Lock su labdb — severità ${severity}`,\n  '',\n  `Bloccante: pid ${s.pid_bloccante} (${esc(s.stato_bloccante)}), transazione aperta da ${s.durata_tx_bloccante_sec} s`,\n  `Utente: ${esc(s.utente_bloccante)}`,\n  `IP di provenienza: ${esc(s.ip_bloccante)}` + (s.applicazione_bloccante ? ` (${esc(s.applicazione_bloccante)})` : ''),\n  `Query: ${esc(s.query_bloccante)}`,\n  '',\n  `Sessioni bloccate: ${s.n_bloccate} (attesa massima ${s.attesa_max_sec} s)`,\n  ...s.bloccate.slice(0, 5).map(b => `• pid ${b.pid}, utente ${esc(b.utente)}, IP ${esc(b.ip)}, in attesa da ${b.attesa_sec} s`),\n  '',\n  `Proposta AI: ${azione}`,\n  esc(motivazione),\n  '',\n  'Approva = termina la sessione bloccante.',\n].join('\\n');\n\nreturn {\n  json: {\n    ...s,\n    messaggio,\n    severity,\n    azione,\n    motivazione,\n    target: `pid=${s.pid_bloccante}`,\n    detail: {\n      modello: $('Config').first().json.modello,\n      azione_proposta: azione,\n      severita_kb: kb.severita_kb,\n      severita_modello: severity_modello,\n      criterio_kb: kb.criterio_kb,\n      motivazione,\n      bloccante: { pid: s.pid_bloccante, utente: s.utente_bloccante, ip: s.ip_bloccante, applicazione: s.applicazione_bloccante, stato: s.stato_bloccante, query: s.query_bloccante, durata_tx_sec: s.durata_tx_bloccante_sec },\n      bloccate: s.bloccate,\n    },\n  },\n};"
+        "jsCode": "// Valida la risposta di Ollama: se non è JSON valido si ripiega su valori prudenti.\nconst { domanda, ...s } = $('Raggruppa per bloccante').item.json;\nconst kb = $('Componi prompt').item.json;\n\nlet p = {};\ntry { p = JSON.parse($json.response); } catch (e) { p = {}; }\n\n// La severità fa fede dal vector DB; se il modello ne riporta una diversa lo si annota nel dettaglio.\nconst severity_modello = ['P1', 'P2', 'P3', 'P4'].includes(p.severity) ? p.severity : null;\nconst severity = kb.severita_kb ?? severity_modello ?? 'P3';\nconst azione = p.azione === 'TERMINA' ? 'TERMINA' : 'ATTENDI';\nconst motivazione = String(p.motivazione || 'risposta del modello non interpretabile').slice(0, 300);\n\n// Telegram interpreta il testo come Markdown: i caratteri _ * ` [ vanno preceduti da \\\n// altrimenti nomi come app_user fanno fallire l'invio (\"can't parse entities\").\nconst esc = v => String(v ?? '').replace(/([_*`\\[])/g, '\\\\$1');\nconst messaggio = [\n  `🚨 Lock su PostgreSQL — severità ${severity}`,\n  '',\n  `Bloccante: pid ${s.pid_bloccante} (${esc(s.stato_bloccante)}), transazione aperta da ${s.durata_tx_bloccante_sec} s`,\n  `Utente: ${esc(s.utente_bloccante)}`,\n  `IP di provenienza: ${esc(s.ip_bloccante)}` + (s.applicazione_bloccante ? ` (${esc(s.applicazione_bloccante)})` : ''),\n  `Query: ${esc(s.query_bloccante)}`,\n  '',\n  `Sessioni bloccate: ${s.n_bloccate} (attesa massima ${s.attesa_max_sec} s)`,\n  ...s.bloccate.slice(0, 5).map(b => `• pid ${b.pid}, utente ${esc(b.utente)}, IP ${esc(b.ip)}, in attesa da ${b.attesa_sec} s`),\n  '',\n  `Proposta AI: ${azione}`,\n  esc(motivazione),\n  '',\n  'Approva = termina la sessione bloccante.',\n].join('\\n');\n\nreturn {\n  json: {\n    ...s,\n    messaggio,\n    severity,\n    azione,\n    motivazione,\n    target: `pid=${s.pid_bloccante}`,\n    detail: {\n      modello: $('Config').first().json.modello,\n      azione_proposta: azione,\n      severita_kb: kb.severita_kb,\n      severita_modello: severity_modello,\n      criterio_kb: kb.criterio_kb,\n      motivazione,\n      bloccante: { pid: s.pid_bloccante, utente: s.utente_bloccante, ip: s.ip_bloccante, applicazione: s.applicazione_bloccante, stato: s.stato_bloccante, query: s.query_bloccante, durata_tx_sec: s.durata_tx_bloccante_sec },\n      bloccate: s.bloccate,\n    },\n  },\n};"
       },
       "id": "ee8a8a3c-60b1-4308-af69-d916879d7db5",
       "name": "Interpreta risposta",
@@ -157,7 +157,7 @@
       "notesInFlow": true,
       "credentials": {
         "postgres": {
-          "name": "Lab PG - ai_monitor"
+          "name": "Postgres - ai_monitor"
         }
       },
       "notes": "Credenziale: ai_monitor"
@@ -193,7 +193,7 @@
         }
       },
       "notes": "Credenziale: bot Telegram",
-      "webhookId": "d5fcd0cc-1388-46f5-b25f-d5529c4bfc72"
+      "webhookId": "238c1905-d14f-42ce-a3df-b0e4b062b347"
     },
     {
       "parameters": {
@@ -248,7 +248,7 @@
       "notesInFlow": true,
       "credentials": {
         "postgres": {
-          "name": "Lab PG - ai_action"
+          "name": "Postgres - ai_action"
         }
       },
       "notes": "Credenziale: ai_action. La funzione scrive da sola EXECUTED/FAILED su audit_log"
@@ -276,7 +276,7 @@
         }
       },
       "notes": "Credenziale: bot Telegram",
-      "webhookId": "8b617b7b-1096-4fa6-a9ac-deaace155081"
+      "webhookId": "709e0843-2d73-484b-a9c9-de31033c19d2"
     },
     {
       "parameters": {
@@ -297,7 +297,7 @@
       "notesInFlow": true,
       "credentials": {
         "postgres": {
-          "name": "Lab PG - ai_monitor"
+          "name": "Postgres - ai_monitor"
         }
       },
       "notes": "Credenziale: ai_monitor"
@@ -342,7 +342,7 @@
       ],
       "credentials": {
         "postgres": {
-          "name": "Lab PG - ai_monitor"
+          "name": "Postgres - ai_monitor"
         }
       },
       "notes": "Credenziale: ai_monitor. Legge kb.documenti (pgvector)",
