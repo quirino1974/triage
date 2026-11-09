@@ -1,5 +1,7 @@
 # Lab Triage AI
 
+Progetto a scopo didattico.
+
 PostgreSQL + Ollama + n8n + Telegram con un principio solo: **l'AI propone, l'umano firma, il database registra.**
 
 Ogni 5 minuti il flusso cerca i lock su PostgreSQL. Se ne trova uno, recupera il criterio di severità dal
