@@ -147,7 +147,7 @@ bash kb/carica-kb.sh
 ## Autore
 
 **Quirino Scaramastra** — 
-[LinkedIn](https://www.linkedin.com/in/qscaramastra/) · [prodigeit.io](https://prodigeit.io)
+[LinkedIn](https://www.linkedin.com/in/qscaramastra/)
 
 ## Licenza
 
